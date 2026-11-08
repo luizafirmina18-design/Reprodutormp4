@@ -8,15 +8,17 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/ps3dev/ps3toolchain:latest
     steps:
       - name: Baixar o código
         uses: actions/checkout@v4
 
+      - name: Instalar compilador PowerPC
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-powerpc64-linux-gnu python3
+
       - name: Compilar PKG do PS3
         run: |
-          ls -la
           chmod +x build.sh
           ./build.sh
 
