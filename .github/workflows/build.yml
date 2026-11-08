@@ -14,8 +14,7 @@ jobs:
 
       - name: Compilar PKG do PS3
         run: |
-          chmod +x build.sh
-          ./build.sh
+          docker run --rm -v ${{ github.workspace }}:/work -w /work ps3dev/ps3toolchain:latest bash build.sh
 
       - name: Salvar o PKG pronto
         uses: actions/upload-artifact@v4
