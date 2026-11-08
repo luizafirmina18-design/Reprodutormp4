@@ -14,40 +14,8 @@ jobs:
 
       - name: Compilar PKG do PS3
         run: |
-          docker run --rm -v ${{ github.workspace }}:/work ps3dev/ps3toolchain:latest bash -c "
-            set -e
-            cd /work
-            echo '=== Arquivos ==='
-            ls -la
-            
-            # Cria PARAM.SFO se não existir
-            if [ ! -f PARAM.SFO ]; then
-              echo 'Criando PARAM.SFO...'
-              sfo.py --title 'YoPlayer' --appid YOUP00001 --category HG -o PARAM.SFO || python3 -c \"
-          import struct
-          # PARAM.SFO simples
-          open('PARAM.SFO','wb').write(b'\\x00PSF\\x01\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00')
-          \"
-            fi
-            
-            # Cria ICON0.PNG se não existir
-            if [ ! -f ICON0.PNG ]; then
-              echo 'Criando ICON0.PNG fake...'
-              python3 -c \"
-          from PIL import Image
-          img = Image.new('RGB', (320, 176), color=(255, 0, 0))
-          img.save('ICON0.PNG')
-          \"
-            fi
-            
-            echo 'Compilando...'
-            make
-            ls -lh EBOOT.BIN
-            
-            echo 'Criando PKG...'
-            make_package_npdrm --content-id UP0001-YOUP00001_00-YOPLAYER00000001 --package YoPlayer.pkg PARAM.SFO EBOOT.BIN ICON0.PNG videos.txt
-            ls -lh *.pkg
-          "
+          chmod +x build.sh
+          ./build.sh
 
       - name: Salvar o PKG pronto
         uses: actions/upload-artifact@v4
