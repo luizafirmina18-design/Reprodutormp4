@@ -3,16 +3,16 @@ set -e
 echo "=== Arquivos ==="
 ls -la
 
-# Cria PARAM.SFO simples se não existir
+# Cria PARAM.SFO simples
 if [ ! -f PARAM.SFO ]; then
   echo "Criando PARAM.SFO"
   printf '\x00PSF\x01\x01\x00\x00' > PARAM.SFO
 fi
 
-# Cria ICON0.PNG simples se não existir
+# Cria ICON0.PNG sem precisar de PIL - é um PNG vermelho 1x1
 if [ ! -f ICON0.PNG ]; then
   echo "Criando ICON0.PNG"
-  python3 -c "from PIL import Image; Image.new('RGB', (320,176), color=(255,0,0)).save('ICON0.PNG')"
+  echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" | base64 -d > ICON0.PNG
 fi
 
 echo "Compilando..."
