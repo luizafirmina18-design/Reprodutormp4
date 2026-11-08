@@ -1,8 +1,11 @@
-CELL_MK_DIR = $(CELL_SDK)/samples/mk
-include $(CELL_MK_DIR)/sdk.makedef.mk
+CC = ppu-gcc
+CFLAGS = -O2 -Wall
+LDFLAGS = -lnet -lsysutil -lsysmodule
 
-PPU_SRCS = main.c
-PPU_TARGET = EBOOT.BIN
-PPU_PRX_LDFLAGS += -lnet -lsysutil -lsysmodule
+all: EBOOT.BIN
 
-include $(CELL_MK_DIR)/sdk.target.mk
+EBOOT.BIN: main.c
+	$(CC) $(CFLAGS) main.c -o EBOOT.BIN $(LDFLAGS)
+
+clean:
+	rm -f EBOOT.BIN
