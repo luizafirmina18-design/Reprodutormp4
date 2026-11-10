@@ -1,0 +1,49 @@
+name: Compilar PKG
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ubuntu:20.04
+    steps:
+      - name: Dependencias
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y curl make git python2 python3 libgmp10 libelf1 zlib1g libssl1.1 bzip2 xz-utils
+          ln -sf /usr/bin/python2 /usr/bin/python
+      - uses: actions/checkout@v4
+      - name: Baixar toolchain do PS3
+        run: |
+          curl -sL https://github.com/bucanero/ps3toolchain/releases/download/ubuntu-latest-fad3b5fb/ps3dev-ubuntu-latest-2020-08-31.tar.gz | tar xz -C /opt
+          echo "PS3DEV=/opt/ps3dev" >> $GITHUB_ENV
+          echo "PSL1GHT=/opt/ps3dev" >> $GITHUB_ENV
+          echo "/opt/ps3dev/bin" >> $GITHUB_PATH
+          echo "/opt/ps3dev/ppu/bin" >> $GITHUB_PATH
+      - name: Gerar icone
+        run: |
+          python3 - <<'PY'
+          import zlib, struct, math
+          W, H = 320, 176
+          raw = b''
+          for y in range(H):
+              raw += b'\x00'
+              for x in range(W):
+                  r,g,b = 20,10,40
+                  if 100 < x < 220 and 30 < y < 140:
+                      r,g,b = 255, 80, 200
+                  if 140 < x < 180 and 60 < y < 120:
+                      r,g,b = 20,20,20
+                  raw += bytes((r,g,b))
+          def chunk(t, d):
+              c = struct.pack('>I', len(d)) + t + d
+              return c + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+          png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', W, H, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
+          open('ICON0.PNG', 'wb').write(png)
+          PY
+      - name: Compilar
+        run: make
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cobra-music-pkg
+          path: cobra.pkg
