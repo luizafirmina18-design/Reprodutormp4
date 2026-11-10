@@ -301,4 +301,3 @@ int main(void)
     netDeinitialize();
     sysModuleUnload(SYSMODULE_NET);
     return 0;
-}
