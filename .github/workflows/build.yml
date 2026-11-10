@@ -16,7 +16,6 @@ jobs:
       - name: Baixar toolchain do PS3
         run: |
           curl -sL https://github.com/bucanero/ps3toolchain/releases/download/ubuntu-latest-fad3b5fb/ps3dev-ubuntu-latest-2020-08-31.tar.gz | tar xz -C /opt
-          ls /opt/ps3dev
           echo "PS3DEV=/opt/ps3dev" >> $GITHUB_ENV
           echo "PSL1GHT=/opt/ps3dev" >> $GITHUB_ENV
           echo "/opt/ps3dev/bin" >> $GITHUB_PATH
