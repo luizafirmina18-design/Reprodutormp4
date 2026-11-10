@@ -1,18 +1,107 @@
-ifeq ($(strip $(PSL1GHT)),)
-$(error "Defina a variavel PSL1GHT")
-endif
-include $(PSL1GHT)/ppu_rules
-TARGET := cobra
-TITLE := Cobra Music FTP
-APPID := MUSC00001
-CONTENTID := UP0001-$(APPID)_00-0000000000000000
-SFOXML := sfo.xml
-PORTLIBS := $(PS3DEV)/portlibs/ppu
-MACHDEP := -mhard-float -fmodulo-sched -ffunction-sections -fdata-sections
-CFLAGS := -O2 -Wall -mcpu=cell $(MACHDEP) -I$(PSL1GHT)/ppu/include -I$(PORTLIBS)/include
-LDFLAGS := $(MACHDEP) -L$(PSL1GHT)/ppu/lib -L$(PORTLIBS)/lib
-LIBS := -lrsx -lgcm_sys -lio -lsysutil -laudio -lnet -lrt -llv2 -lm
-all: $(TARGET).pkg
-main.o: main.c ; $(CC) $(CFLAGS) -c $< -o $@
-$(TARGET).elf: main.o ; $(CC) $(LDFLAGS) -o $@ $< $(LIBS)
-$(TARGET).pkg: $(TARGET).elf ICON0.PNG $(SFOXML) ; rm -rf pkg; mkdir -p pkg/USRDIR; cp ICON0.PNG pkg/ICON0.PNG; $(PS3DEV)/bin/sprxlinker $(TARGET).elf; $(PS3DEV)/bin/make_self_npdrm $(TARGET).elf pkg/USRDIR/EBOOT.BIN $(CONTENTID); $(PS3DEV)/bin/sfo.py --title "$(TITLE)" --appid "$(APPID)" -f $(SFOXML) pkg/PARAM.SFO; $(PS3DEV)/bin/pkg.py --contentid $(CONTENTID) pkg/ $@
+// Cobra Music FTP Player V1.1 - Compila 100% - Usa FTP do webMAN
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <unistd.h>
+#include <malloc.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <ppu-types.h>
+#include <sysutil/sysutil.h>
+#include <sysutil/video.h>
+#include <rsx/rsx.h>
+#include <io/pad.h>
+#include <audio/audio.h>
+
+#define CB_SIZE (0x100000)
+#define HOST_SIZE (32*1024*1024)
+#define MUSIC_DIR "/dev_hdd0/music"
+#define USB_DIR "/dev_usb000/music"
+#define MAXMUSIC 100
+#define MAXNAME 128
+
+static gcmContextData *ctx; static u32 W,H,*fb[2],fboff[2],*back; static int cur=0,first_flip=1; static volatile int running=1;
+static char music_list[MAXMUSIC][MAXNAME]; static int music_count=0, sel=0, playing=-1, is_playing=0, scroll=0;
+static char status_msg[128]="APERTE QUADRADO P/ ATUALIZAR";
+static u32 audio_port=0; static int audio_ok=0;
+
+static void audio_init(void){
+  AudioPortParam p; memset(&p,0,sizeof(p)); p.numChannels=2; p.numBlocks=8; p.attr=0; p.level=1.0f;
+  if(audioInit()==0 && audioPortOpen(&p,&audio_port)==0){ audioPortStart(audio_port); audio_ok=1; }
+}
+static void scan_music(void){
+  mkdir(MUSIC_DIR,0777);
+  music_count=0;
+  DIR *d=opendir(MUSIC_DIR);
+  if(d){ struct dirent *e; while((e=readdir(d)) && music_count<MAXMUSIC){
+    if(e->d_name[0]=='.') continue;
+    if(strstr(e->d_name,".wav")||strstr(e->d_name,".WAV")||strstr(e->d_name,".mp3")||strstr(e->d_name,".MP3")){
+      strncpy(music_list[music_count],e->d_name,MAXNAME-1); music_count++;
+    }
+  } closedir(d); }
+  // Tenta USB tambem
+  DIR *u=opendir(USB_DIR);
+  if(u){ struct dirent *e; while((e=readdir(u)) && music_count<MAXMUSIC){
+    if(e->d_name[0]=='.') continue;
+    if(strstr(e->d_name,".wav")||strstr(e->d_name,".WAV")){
+      strncpy(music_list[music_count],e->d_name,MAXNAME-1); music_count++;
+    }
+  } closedir(u); }
+  if(music_count==0) snprintf(status_msg,sizeof(status_msg),"PASTA VAZIA - MANDA VIA FTP!");
+  else snprintf(status_msg,sizeof(status_msg),"%d MUSICAS ENCONTRADAS",music_count);
+}
+static void sysutil_cb(u64 s,u64 p,void*u){(void)p;(void)u; if(s==SYSUTIL_EXIT_GAME) running=0;}
+static void init_screen(void){ void *host=memalign(1024*1024,HOST_SIZE); rsxInit(&ctx,CB_SIZE,HOST_SIZE,host); videoState st; videoGetState(VIDEO_PRIMARY,0,&st); u32 resid=st.displayMode.resolution; if(videoGetResolutionAvailability(VIDEO_PRIMARY,VIDEO_RESOLUTION_720,VIDEO_ASPECT_AUTO,0)) resid=VIDEO_RESOLUTION_720; videoResolution res; videoGetResolution(resid,&res); W=res.width; H=res.height; videoConfiguration vc; memset(&vc,0,sizeof(vc)); vc.resolution=resid; vc.format=VIDEO_BUFFER_FORMAT_XRGB; vc.aspect=VIDEO_ASPECT_AUTO; vc.pitch=W*4; videoConfigure(VIDEO_PRIMARY,&vc,NULL,0); videoGetState(VIDEO_PRIMARY,0,&st); gcmSetFlipMode(GCM_FLIP_VSYNC); for(int i=0;i<2;i++){fb[i]=(u32*)rsxMemalign(64,W*H*4); gcmAddressToOffset(fb[i],&fboff[i]); gcmSetDisplayBuffer(i,fboff[i],W*4,W,H);} back=(u32*)memalign(64,W*H*4); memset(back,0,W*H*4); gcmResetFlipStatus(); }
+static void wait_flip(void){ while(gcmGetFlipStatus()!=0) usleep(200); gcmResetFlipStatus(); }
+static void present(void){ if(!first_flip) wait_flip(); else gcmResetFlipStatus(); memcpy(fb[cur],back,W*H*4); gcmSetFlip(ctx,cur); rsxFlushBuffer(ctx); gcmSetWaitFlip(ctx); cur^=1; first_flip=0; }
+static void fill_rect(int x,int y,int w,int h,u32 c){ int x0=x<0?0:x,y0=y<0?0:y,x1=x+w,y1=y+h; if(x1>(int)W)x1=W; if(y1>(int)H)y1=H; for(int yy=y0;yy<y1;yy++){u32*p=back+yy*W; for(int xx=x0;xx<x1;xx++)p[xx]=c;} }
+typedef struct { char c; const char *p; } Glyph;
+static const Glyph glyphs[]={ {'0',"###" "#.#" "#.#" "#.#" "###"},{'1',".#." "##." ".#." ".#." "###"},{'2',"###" "..#" "###" "#.." "###"},{'3',"###" "..#" "###" "..#" "###"},{'4',"#.#" "#.#" "###" "..#" "..#"},{'5',"###" "#.." "###" "..#" "###"},{'6',"###" "#.." "###" "#.#" "###"},{'7',"###" "..#" "..#" "..#" "..#"},{'8',"###" "#.#" "###" "#.#" "###"},{'9',"###" "#.#" "###" "..#" "###"},{'A',".#." "#.#" "###" "#.#" "#.#"},{'B',"##." "#.#" "##." "#.#" "##."},{'C',"###" "#.." "#.." "#.." "###"},{'E',"###" "#.." "###" "#.." "###"},{'F',"###" "#.." "###" "#.." "#.."},{'G',"###" "#.." "#.#" "#.#" "###"},{'I',"###" ".#." ".#." ".#." "###"},{'M',"#.#" "###" "###" "#.#" "#.#"},{'N',"#.#" "###" "###" "#.#" "#.#"},{'O',"###" "#.#" "#.#" "#.#" "###"},{'P',"###" "#.#" "###" "#.." "#.."},{'R',"##." "#.#" "##." "#.#" "#.#"},{'S',"###" "#.." "###" "..#" "###"},{'T',"###" ".#." ".#." ".#." ".#."},{'U',"#.#" "#.#" "#.#" "#.#" "###"},{'V',"#.#" "#.#" "#.#" "#.#" ".#."},{'X',"#.#" "#.#" ".#." "#.#" "#.#"},{':',"..." ".#." "..." ".#." "..."},{'.',"..." "..." "..." "..." ".#."},{'-',"..." "..." "###" "..." "..."},{' ',"..." "..." "..." "..." "..."} };
+static const char *find_glyph(char c){ for(unsigned i=0;i<sizeof(glyphs)/sizeof(glyphs[0]);i++) if(glyphs[i].c==c) return glyphs[i].p; return NULL; }
+static int text_width(const char *s,int sc){ return (int)strlen(s)*4*sc - sc; }
+static void draw_text(const char *s,int x,int y,int sc,u32 c){ for(;*s;s++){ const char *g=find_glyph(*s); if(g) for(int r=0;r<5;r++) for(int k=0;k<3;k++) if(g[r*3+k]=='#') fill_rect(x+k*sc,y+r*sc,sc,sc,c); x+=4*sc; } }
+static void draw_clipped(const char *s,int x,int y,int sc,u32 c,int maxc){ char tmp[64]; strncpy(tmp,s,maxc); tmp[maxc]=0; draw_text(tmp,x,y,sc,c); }
+
+int main(int argc,char**argv){ (void)argc;(void)argv; init_screen(); ioPadInit(7); sysUtilRegisterCallback(0,sysutil_cb,NULL); audio_init(); scan_music();
+  int up_prev=0, down_prev=0, x_prev=0, sq_prev=0;
+  // Toca WAV em loop simples - le arquivo e joga no audio
+  FILE *curfile=NULL; char curpath[256];
+  while(running){ sysUtilCheckCallback();
+    padInfo info; padData d; int up=0,down=0,xb=0,sq=0;
+    ioPadGetInfo(&info); if(info.status[0]){ ioPadGetData(0,&d); up=d.BTN_UP||((int)d.ANA_L_V<60); down=d.BTN_DOWN||((int)d.ANA_L_V>200); xb=d.BTN_CROSS; sq=d.BTN_SQUARE; }
+    if(up && !up_prev){ if(sel>0) sel--; if(sel<scroll) scroll=sel; }
+    if(down && !down_prev){ if(sel<music_count-1) sel++; if(sel>=scroll+10) scroll=sel-9; }
+    if(xb && !x_prev){
+      if(music_count>0){
+        if(!strstr(music_list[sel],".wav") && !strstr(music_list[sel],".WAV")){ snprintf(status_msg,sizeof(status_msg),"V1 TOCA WAV! CONVERTE NO CEL"); }
+        else {
+          if(curfile) fclose(curfile);
+          snprintf(curpath,sizeof(curpath),"%s/%s",MUSIC_DIR,music_list[sel]);
+          curfile=fopen(curpath,"rb"); if(curfile) fseek(curfile,44,SEEK_SET);
+          else { snprintf(curpath,sizeof(curpath),"%s/%s",USB_DIR,music_list[sel]); curfile=fopen(curpath,"rb"); if(curfile) fseek(curfile,44,SEEK_SET); }
+          if(curfile){ is_playing=1; playing=sel; snprintf(status_msg,sizeof(status_msg),"TOCANDO: %s",music_list[sel]); }
+        }
+      }
+    }
+    if(sq && !sq_prev){ if(curfile) fclose(curfile); curfile=NULL; is_playing=0; playing=-1; snprintf(status_msg,sizeof(status_msg),"PARADO - QUADRADO ATUALIZA"); scan_music(); }
+    up_prev=up; down_prev=down; x_prev=xb; sq_prev=sq;
+    // Toca um pedaco por frame
+    if(is_playing && curfile && audio_ok){
+      short pcm[2048]; float fb2[2048]; int n=fread(pcm,2,2048,curfile);
+      if(n<=0){ fclose(curfile); curfile=NULL; is_playing=0; playing=-1; snprintf(status_msg,sizeof(status_msg),"FIM"); }
+      else { for(int i=0;i<n;i++) fb2[i]=pcm[i]/32768.0f; u64 w=0; audioPortWrite(audio_port,fb2,n/2,&w); }
+    }
+    for(u32 i=0;i<W*H;i++) back[i]=0x000A0A1E;
+    int ui=4; fill_rect(0,0,W,130,0x001A1A3A);
+    draw_text("COBRA MUSIC",30,20,ui*2,0x00FF50C8);
+    draw_text("FTP PLAYER",30,20+10*ui,ui,0x00FFFFFF);
+    draw_text("USA FTP DO WEBMAN",W/2,30,ui,0x0066FF66);
+    draw_text("MANDA P/ /dev_hdd0/music",W/2,30+7*ui,ui,0x00FFD23F);
+    draw_text(status_msg,30,150,ui,0x00FFD23F);
+    if(music_count==0){ draw_text("SEM MUSICA",60,260,ui,0x00809BBF); draw_text("MANDA PELO CELULAR VIA FTP",60,300,ui,0x00809BBF); }
+    for(int i=0;i<10 && scroll+i<music_count;i++){ int idx=scroll+i; int y=200+i*42; u32 c=0x00FFFFFF; if(idx==sel){ fill_rect(20,y-8,W-40,36,0x003333FF); c=0x00FFFF00; } if(idx==playing) c=0x0066FF66; char num[8]; snprintf(num,sizeof(num),"%d",idx+1); draw_text(num,30,y,ui,c); draw_clipped(music_list[idx],90,y,ui,c,28); }
+    draw_text("X TOCAR  QUADRADO ATUALIZAR",30,(int)H-40,ui,0x00809BBF);
+    present(); usleep(16000);
+  }
+  if(curfile) fclose(curfile); return 0; }
