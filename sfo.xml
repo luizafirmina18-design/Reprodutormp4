@@ -9,7 +9,7 @@
   <value name="PS3_SYSTEM_VER" type="string">00.0000</value>
   <value name="RESOLUTION" type="integer">63</value>
   <value name="SOUND_FORMAT" type="integer">1</value>
-  <value name="TITLE" type="string">Cobra Music FTP</value>
-  <value name="TITLE_ID" type="string">MUSC00001</value>
+  <value name="TITLE" type="string">Cobra Arena 2P</value>
+  <value name="TITLE_ID" type="string">COBR00002</value>
   <value name="VERSION" type="string">01.00</value>
 </sfo>
