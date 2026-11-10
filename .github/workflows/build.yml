@@ -1,0 +1,24 @@
+name: Build PS3 app
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compilar e gerar PKG
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/src" -w /src \
+            ps3dev/psl1ght:latest bash scripts/build_pkg.sh
+
+      - name: Enviar PKG
+        uses: actions/upload-artifact@v4
+        with:
+          name: ps3music-pkg
+          path: output/ps3music.pkg
