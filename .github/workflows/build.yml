@@ -16,6 +16,7 @@ jobs:
       - name: Baixar toolchain do PS3
         run: |
           curl -sL https://github.com/bucanero/ps3toolchain/releases/download/ubuntu-latest-fad3b5fb/ps3dev-ubuntu-latest-2020-08-31.tar.gz | tar xz -C /opt
+          ls /opt/ps3dev
           echo "PS3DEV=/opt/ps3dev" >> $GITHUB_ENV
           echo "PSL1GHT=/opt/ps3dev" >> $GITHUB_ENV
           echo "/opt/ps3dev/bin" >> $GITHUB_PATH
@@ -23,7 +24,7 @@ jobs:
       - name: Gerar icone
         run: |
           python3 - <<'PY'
-          import zlib, struct, math
+          import zlib, struct
           W, H = 320, 176
           raw = b''
           for y in range(H):
@@ -32,8 +33,6 @@ jobs:
                   r,g,b = 20,10,40
                   if 100 < x < 220 and 30 < y < 140:
                       r,g,b = 255, 80, 200
-                  if 140 < x < 180 and 60 < y < 120:
-                      r,g,b = 20,20,20
                   raw += bytes((r,g,b))
           def chunk(t, d):
               c = struct.pack('>I', len(d)) + t + d
