@@ -1,4 +1,3 @@
-.RECIPEPREFIX = >
 ifeq ($(strip $(PSL1GHT)),)
 $(error "Defina a variavel PSL1GHT")
 endif
