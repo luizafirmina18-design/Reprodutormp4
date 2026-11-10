@@ -1,29 +1,24 @@
-name: Compilar PKG
+name: Build PS3 app
 
 on:
   push:
+  pull_request:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ps3dev/ps3dev:latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Ver ambiente
+      - name: Compilar e gerar PKG
         run: |
-          echo "PS3DEV=$PS3DEV"
-          echo "PSL1GHT=$PSL1GHT"
-          ls $PS3DEV
+          docker run --rm -v "$GITHUB_WORKSPACE:/src" -w /src \
+            ps3dev/psl1ght:latest bash scripts/build_pkg.sh
 
-      - name: Compilar
-        run: make
-
-      - name: Gerar PKG
-        run: make pkg
-
-      - uses: actions/upload-artifact@v4
+      - name: Enviar PKG
+        uses: actions/upload-artifact@v4
         with:
-          name: app-ps3
-          path: "*.pkg"
+          name: ps3music-pkg
+          path: output/ps3music.pkg
